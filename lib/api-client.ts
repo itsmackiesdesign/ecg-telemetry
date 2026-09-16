@@ -5,10 +5,3 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   if (token) headers.set('Authorization', `Bearer ${token}`);
   return fetch(`${API_BASE}${path}`, {...init, headers, cache:'no-store'});
 }
-export async function openEcg(path: string) {
-  const response = await apiFetch(path);
-  if (!response.ok) throw new Error('Unable to open ECG');
-  const url = URL.createObjectURL(await response.blob());
-  const link = document.createElement('a'); link.href=url; link.target='_blank'; link.rel='noopener'; link.click();
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
-}

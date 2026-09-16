@@ -142,7 +142,7 @@ async def save_image(image,user,limit=15*1024*1024):
     return key,raw,mime
 def file_response(key,user,authorized=False):
     with database() as db: row=db.execute('select * from uploads where id=?',(key,)).fetchone()
-    if not row or (not authorized and row['owner']!=user['email']): raise HTTPException(404,'not_found')
+    if not row or not (store/key).is_file() or (not authorized and row['owner']!=user['email']): raise HTTPException(404,'not_found')
     return FileResponse(store/key,media_type=row['mime'],headers={'Cache-Control':'no-store'})
 @app.post('/ecg/upload')
 async def upload(image:UploadFile=File(...),user=Depends(current)):
@@ -184,13 +184,36 @@ async def handover(context:str=Form(...),image:UploadFile=File(...),user=Depends
     key,_,_=await save_image(image,user)
     with database() as db: db.execute('insert into handovers values(?,?,?,?,?,?)',(id,data['centerId'],user['email'],json.dumps(data),key,now()))
     return {'handoverId':id}
+def incoming_rows(user, center_id=None):
+    # Author and timestamps come from persisted server records, not client context.
+    query = """select h.*, u.display_name as creator_name, c.data as center_data
+        from handovers h join centers c on h.center_id=c.id
+        left join users u on h.owner=u.email where c.owner=?"""
+    params = [user['email']]
+    if center_id is not None:
+        query += ' and c.id=?'
+        params.append(center_id)
+    with database() as db:
+        rows = db.execute(query+' order by h.created_at desc', params).fetchall()
+    return {'handovers':[{
+        'id':r['id'], 'center_id':r['center_id'],
+        'center_name':json.loads(r['center_data']).get('name',''),
+        'patient':json.loads(r['data']), 'created_at':r['created_at'],
+        'created_by':{'email':r['owner'], 'display_name':r['creator_name'] or r['owner']},
+        'clinician_email':r['owner'], 'status':'new'
+    } for r in rows]}
+
+@app.get('/handovers')
+def manager_handovers(user=Depends(current)):
+    role(user,'manager')
+    return incoming_rows(user)
+
 @app.get('/centers/{id}/handovers')
 def incoming(id:str,user=Depends(current)):
     role(user,'manager')
     with database() as db:
         if not db.execute('select 1 from centers where id=? and owner=?',(id,user['email'])).fetchone(): raise HTTPException(404,'center_not_found')
-        rows=db.execute('select * from handovers where center_id=? order by created_at desc',(id,)).fetchall()
-    return {'handovers':[{'id':r['id'],'patient':json.loads(r['data']),'created_at':r['created_at'],'clinician_email':r['owner'],'status':'new'} for r in rows]}
+    return incoming_rows(user,id)
 @app.get('/handovers/{id}/ecg')
 def handover_ecg(id:str,user=Depends(current)):
     with database() as db: row=db.execute('select h.* from handovers h join centers c on h.center_id=c.id where h.id=? and (h.owner=? or c.owner=?)',(id,user['email'],user['email'])).fetchone()
