@@ -21,6 +21,7 @@ Requires Node.js 22.13+ (tested with Node.js 24).
 - Care checklist, clinician cautions, location permission, session timeline and JSON handover export.
 - Manager-controlled PCI center directory: each signed-in manager can create a center profile, maintain location/phone details and toggle live acceptance; clinicians see current availability before choosing a destination.
 - Authorized center handover: after explicit clinician consent, patient context, clinician/GPT summary and the original ECG image are stored in D1/R2 and appear in the receiving center manager's incoming handovers. Access is limited to the sending clinician and owning manager.
+- Email/password accounts: users register as a doctor or center manager; passwords are salted and derived with PBKDF2-SHA-256, and only hashed session tokens are stored server-side.
 - App-shell service worker; core client-side guidance can run offline after assets have been cached. Patient inputs stay in memory and are lost on reload. GPT analysis sends the selected image and clinical context to OpenAI only after explicit consent; patient data is not stored in browser persistence.
 - Optional browser WebMCP read-only workflow status tool.
 
@@ -61,3 +62,5 @@ The endpoint enforces a 90-second provider deadline and a per-isolate concurrent
 ### Center accounts and D1/R2 setup
 
 The generated migration in `drizzle/0000_worried_pyro.sql` creates `centers` and `center_handovers`. The Site manifest binds D1 as `DB` and R2 as `ECG_BUCKET`; apply the migration in the target environment before publishing center profiles. A manager account is the authenticated Sites identity that created the profile; ownership checks are enforced server-side on profile updates, incoming handovers and ECG retrieval.
+
+The auth migration `drizzle/0001_milky_captain_flint.sql` creates `app_users` and `app_sessions`. The browser receives an HttpOnly, SameSite session cookie; production cookies are Secure and local preview cookies work over HTTP. Role checks are enforced on center management (manager) and handover submission (doctor).

@@ -31,3 +31,21 @@ export const handovers = sqliteTable("center_handovers", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   acknowledgedAt: text("acknowledged_at"),
 });
+
+export const appUsers = sqliteTable("app_users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  role: text("role", { enum: ["doctor", "manager"] }).notNull(),
+  passwordHash: text("password_hash").notNull(),
+  passwordSalt: text("password_salt").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const appSessions = sqliteTable("app_sessions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => appUsers.id),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: text("expires_at").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

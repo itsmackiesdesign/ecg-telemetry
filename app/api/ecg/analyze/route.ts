@@ -1,5 +1,6 @@
 import {env} from 'cloudflare:workers';
 import {getChatGPTUser} from '@/app/chatgpt-auth';
+import {getAppUser} from '@/lib/app-auth';
 import {contextSchema} from '@/lib/ecg/schema';
 import {analyzeEcg,AnalysisError,imageMime,MAX_IMAGE_BYTES} from '@/lib/ecg/service';
 export const dynamic='force-dynamic';
@@ -8,14 +9,14 @@ const running=new Set<string>();
 export async function POST(request:Request){
   if(request.headers.get('Origin')!==new URL(request.url).origin)return reply({error:'forbidden_origin'},403);
   // Never derive access or API credentials from client fields.
-  const user=await getChatGPTUser();if(!user)return reply({error:'sign_in_required'},401);
+  const appUser=await getAppUser(); const platformUser=appUser?null:await getChatGPTUser(); const userId=appUser?.id||platformUser?.userId; if(!userId)return reply({error:'sign_in_required'},401);
   const bindings=env as {OPENAI_API_KEY?:string;OPENAI_MODEL?:string};
   const key=bindings.OPENAI_API_KEY?.trim();if(!key)return reply({error:'not_configured'},503);
-  if(running.has(user.userId))return reply({error:'request_in_progress'},429);
+  if(running.has(userId))return reply({error:'request_in_progress'},429);
   if(!request.headers.get('Content-Type')?.startsWith('multipart/form-data'))return reply({error:'invalid_input'},400);
   const length=Number(request.headers.get('Content-Length'));
   if(length>MAX_IMAGE_BYTES+65536)return reply({error:'file_too_large'},413);
-  running.add(user.userId);
+  running.add(userId);
   try{
     // Bound the stream before formData allocation, including chunked uploads.
     const reader=request.body?.getReader();if(!reader)return reply({error:'invalid_input'},400);
@@ -32,5 +33,5 @@ export async function POST(request:Request){
     const result=await analyzeEcg({bytes,mime,context:context.data,key,model:bindings.OPENAI_MODEL||'gpt-5.4',signal:request.signal});
     return reply(result);
   }catch(error){if(error instanceof AnalysisError)return reply({error:error.code},error.status);return reply({error:'invalid_input'},400)}
-  finally{running.delete(user.userId)}
+  finally{running.delete(userId)}
 }
