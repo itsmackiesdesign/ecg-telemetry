@@ -1,4 +1,4 @@
-const CACHE = 'pulsepoint-shell-v1';
+const CACHE = 'pulsepoint-shell-v2';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['/', '/favicon.svg'])).then(() => self.skipWaiting()));
 });

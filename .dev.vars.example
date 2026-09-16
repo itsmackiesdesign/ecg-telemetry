@@ -1,0 +1,3 @@
+# For local Cloudflare Worker preview: copy to .dev.vars and set your key.
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.4
