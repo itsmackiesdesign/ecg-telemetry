@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { centerInputSchema, handoverContextSchema } from "../lib/center-schemas.ts";
+import { centerInputSchema, handoverContextSchema } from "../lib/center-schemas";
 
 test("center profile requires manager-facing contact and availability fields", () => {
   const parsed = centerInputSchema.safeParse({
