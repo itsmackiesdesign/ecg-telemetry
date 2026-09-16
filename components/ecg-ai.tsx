@@ -8,7 +8,7 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger} from '@/components/ui/accordion';
 import {analysisSchema,type AnalysisEnvelope,type ClinicalContext,type Language} from '@/lib/ecg/schema';
 const local=(lang:Language,en:string,uz:string,ru:string)=>lang==='uz'?uz:lang==='ru'?ru:en;
-export function useEcgAnalysis(file:File|null,patient:ClinicalContext['patient'],lang:Language){
+export function useEcgAnalysis(file:File|null,patient:ClinicalContext['patient'],lang:Language,patientName=''){
  const [result,setResult]=useState<AnalysisEnvelope|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[consent,setConsent]=useState(false);
  const [service,setService]=useState<{configured:boolean;signed_in:boolean}|null>(null);
  const controller=useRef<AbortController|null>(null),generation=useRef(0);
@@ -25,7 +25,7 @@ export function useEcgAnalysis(file:File|null,patient:ClinicalContext['patient']
   setBusy(true);setError('');setResult(null);
   const deadline=setTimeout(()=>abort.abort(),100000);
   try{
-   const form=new FormData();form.set('image',file,'ecg.'+(file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg'));form.set('context',JSON.stringify({language:lang,patient,consent:true}));
+   const form=new FormData();form.set('image',file,'ecg.'+(file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg'));form.set('patient_name',patientName);form.set('context',JSON.stringify({language:lang,patient,consent:true}));
    const response=await apiFetch('/ecg/analyze',{method:'POST',body:form,signal:abort.signal,cache:'no-store'});
    let body:Record<string,unknown>;try{body=await response.json()}catch{throw new Error('invalid_response')}
    if(!response.ok)throw new Error(typeof body.error==='string'?body.error:'provider_unavailable');

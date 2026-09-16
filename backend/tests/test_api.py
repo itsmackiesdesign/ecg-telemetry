@@ -42,9 +42,10 @@ class Workflow(unittest.TestCase):
   analysis=Analysis(coronary_state='low_risk',analysis_status='limited',image_quality={'status':'limited','readable_leads':[],'missing_or_unreadable_leads':[],'calibration_visible':False,'limitations':['test']},measurements=[],observed_findings=[],preliminary_interpretations=[],review_priority='indeterminate',priority_reason='test',next_steps=[],missing_information=[],summary_for_clinician='test',requires_physician_confirmation=True,acs_ruled_out=False)
   mock=AsyncMock();mock.__aenter__.return_value=mock;mock.beta.chat.completions.parse.return_value=SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(refusal=None,parsed=analysis))])
   with patch('app.main.AsyncOpenAI',return_value=mock),patch.object(settings,'openai_api_key','test-key'):
-   r=client.post('/ecg/analyze',headers=doctor,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')})
+   r=client.post('/ecg/analyze',headers=doctor,data={'context':json.dumps(context),'patient_name':'Test Patient Name'},files={'image':('ecg.png',PNG,'image/png')})
   self.assertEqual(r.status_code,200,r.text);self.assertEqual(r.json()['analysis']['review_priority'],'emergency_review');self.assertIn('assessment_id',r.json())
-  self.assertEqual(len(client.get('/assessments',headers=doctor).json()['assessments']),1)
+  self.assertEqual(client.get('/assessments',headers=doctor).json()['assessments'][0]['patient_id'],'Test Patient Name')
+  self.assertNotIn('Test Patient Name',str(mock.beta.chat.completions.parse.call_args))
   context['consent']=False
   self.assertEqual(client.post('/ecg/analyze',headers=doctor,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')}).status_code,422)
 if __name__=='__main__':unittest.main()

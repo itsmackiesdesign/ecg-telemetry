@@ -201,7 +201,7 @@ def handover_ecg(id:str,user=Depends(current)):
 def ecg_status(user=Depends(current)): return {'configured':bool(settings.openai_api_key),'signed_in':True}
 from .ecg import Analysis, Context, guardrails
 @app.post('/ecg/analyze')
-async def analyze(context:str=Form(...),image:UploadFile=File(...),user=Depends(current)):
+async def analyze(context:str=Form(...),image:UploadFile=File(...),patient_name:str=Form('',max_length=200),user=Depends(current)):
     role(user,'doctor')
     try: ctx=Context.model_validate_json(context)
     except ValidationError: raise HTTPException(422,'invalid_input')
@@ -216,7 +216,7 @@ async def analyze(context:str=Form(...),image:UploadFile=File(...),user=Depends(
         model_coronary_state=message.parsed.coronary_state
         analysis,guards=guardrails(message.parsed,ctx)
         envelope={'analysis':analysis.model_dump(),'model':settings.openai_model,'prompt_version':'pulsepoint-ecg-1.2.0','model_coronary_state':model_coronary_state,'analyzed_at':now(),'guardrails':guards,'ecg_path':key}
-        saved=save_assessment(Assessment(patient=ctx.patient.model_dump(),ai_result=envelope,ecg_path=key),user)
+        saved=save_assessment(Assessment(patient_id=patient_name.strip(),patient=ctx.patient.model_dump(),ai_result=envelope,ecg_path=key),user)
         return {**envelope,'assessment_id':saved['id']}
     except AuthenticationError: raise HTTPException(503,'provider_configuration')
     except RateLimitError: raise HTTPException(429,'rate_limited')
