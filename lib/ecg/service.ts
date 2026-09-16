@@ -1,7 +1,7 @@
 import {analysisSchema,applyGuardrails,jsonSchema,type ClinicalContext} from './schema';
 import {ECG_SYSTEM_PROMPT,PROMPT_VERSION} from './prompt';
 export class AnalysisError extends Error{constructor(public code:string,public status=502){super(code)}}
-export const MAX_IMAGE_BYTES=15*1024*1024;
+export const MAX_IMAGE_BYTES=5*1024*1024;
 export function imageMime(bytes:Uint8Array):string|null{
   if(bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff)return 'image/jpeg';
   if([137,80,78,71,13,10,26,10].every((v,i)=>bytes[i]===v))return 'image/png';
