@@ -3,6 +3,6 @@ declare namespace Cloudflare {
     OPENAI_API_KEY?: string;
     OPENAI_MODEL?: string;
     DB?: D1Database;
-    BUCKET?: R2Bucket;
+    ECG_BUCKET?: R2Bucket;
   }
 }

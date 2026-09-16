@@ -19,12 +19,14 @@ Requires Node.js 22.13+ (tested with Node.js 24).
 - Local ECG image upload/camera input; explicitly synthetic sample ECG.
 - Conservative red/yellow/green triage from clinician-entered findings and vital signs; normal ECG does not exclude ACS.
 - Care checklist, clinician cautions, location permission, session timeline and JSON handover export.
+- Manager-controlled PCI center directory: each signed-in manager can create a center profile, maintain location/phone details and toggle live acceptance; clinicians see current availability before choosing a destination.
+- Authorized center handover: after explicit clinician consent, patient context, clinician/GPT summary and the original ECG image are stored in D1/R2 and appear in the receiving center manager's incoming handovers. Access is limited to the sending clinician and owning manager.
 - App-shell service worker; core client-side guidance can run offline after assets have been cached. Patient inputs stay in memory and are lost on reload. GPT analysis sends the selected image and clinical context to OpenAI only after explicit consent; patient data is not stored in browser persistence.
 - Optional browser WebMCP read-only workflow status tool.
 
 ## Clinical limits
 
-This is not a validated medical device or diagnostic AI. With a configured server key, GPT provides preliminary image interpretation and quality observations for physician review. Comparison with prior ECGs, live routing, clinician messaging and hospital alerts remain unconnected. Adult-only input constraints; no paediatric guidance.
+This is not a validated medical device or diagnostic AI. With a configured server key, GPT provides preliminary image interpretation and quality observations for physician review. Travel-time calculation, cardiologist messaging and automated telephone/SMS pre-alerts remain unconnected. Adult-only input constraints; no paediatric guidance.
 
 Illustrative aspirin and oxygen guidance is based on the 2025 ACC/AHA ACS guideline; the guidance screen links to that guideline and the 2023 ESC ACS guideline. No claim is made that the prototype conforms to Uzbekistan national protocols. Local protocol reconciliation, independent cardiology review, ECG dataset validation, privacy/security controls, clinical integration agreements and regulatory assessment are prerequisites for real clinical use.
 
@@ -44,14 +46,18 @@ The ECG upload step now supports an explicit, opt-in server request to OpenAI's 
 
 ### Data and access
 
-`POST /api/ecg/analyze` requires a same-origin request and authenticated Sites identity. The private Site audience remains unchanged. It accepts a bounded multipart request, a JPEG/PNG/WebP file up to 5 MB with matching file signature, validated adult patient data and explicit consent. Patient ID and original file name are excluded from the model request. Notes and image pixels can still contain identifying information: remove those before submission. No D1/R2 or patient logging is added. The provider request uses `store: false`; this does not imply zero provider retention. Review OpenAI data controls and applicable clinical privacy obligations before using patient data.
+`POST /api/ecg/analyze` requires a same-origin request and authenticated Sites identity. The private Site audience remains unchanged. It accepts a bounded multipart request, a JPEG/PNG/WebP file up to 5 MB with matching file signature, validated adult patient data and explicit consent. Patient ID and original file name are excluded from the model request. Notes and image pixels can still contain identifying information: remove those before submission. Center handovers intentionally persist the clinician-supplied patient context in D1 and the ECG image in a private R2 bucket for the selected center account. The provider request uses `store: false`; this does not imply zero provider retention. Review OpenAI data controls and applicable clinical privacy obligations before using patient data.
 
 No approved medication protocol or previous ECG is supplied in this version. The system prompt prohibits individualized doses without that protocol. GPT findings and suggestions are displayed separately from clinician-entered findings; they are not automatically accepted as a diagnosis. Routing remains an unconnected planning screen.
 
-Invalid/refused/incomplete responses, provider errors, cancellation, offline mode and timeout show no assessment. Abnormal vitals cannot be downgraded by GPT output; symptoms, unreadable recordings, incomplete lead coverage and unverified calibration prevent a reassuring status. The application displays these deterministic overrides separately. This is a conservative safeguard, not a validated clinical triage algorithm. There is no autonomous messaging, prescription or transfer.
+Invalid/refused/incomplete responses, provider errors, cancellation, offline mode and timeout show no assessment. Abnormal vitals cannot be downgraded by GPT output; symptoms, unreadable recordings, incomplete lead coverage and unverified calibration prevent a reassuring status. The application displays these deterministic overrides separately. This is a conservative safeguard, not a validated clinical triage algorithm. There is no autonomous messaging, prescription or transfer. A handover is created only when a signed-in clinician selects an accepting center and confirms the authorized clinical transfer; the center manager then retrieves it from the center account.
 
 The endpoint enforces a 90-second provider deadline and a per-isolate concurrent-request guard. This is not a distributed production rate limiter; add infrastructure-level limits before wider deployment. Client changes cancel pending requests and clear stale results. Responses remain only in the active browser session unless the clinician downloads the handover.
 
 ### Verification
 
 `node --import tsx --test tests/ecg.test.ts` exercises request construction with a mocked provider, JSON validation, refusal/error handling, cancellation and priority safeguards. Live model accuracy is not measured by these tests. A real API call and clinical dataset validation require a configured key and separately authorized validation data.
+
+### Center accounts and D1/R2 setup
+
+The generated migration in `drizzle/0000_worried_pyro.sql` creates `centers` and `center_handovers`. The Site manifest binds D1 as `DB` and R2 as `ECG_BUCKET`; apply the migration in the target environment before publishing center profiles. A manager account is the authenticated Sites identity that created the profile; ownership checks are enforced server-side on profile updates, incoming handovers and ECG retrieval.
