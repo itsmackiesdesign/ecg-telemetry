@@ -1,0 +1,1 @@
+ALTER TABLE `centers` ADD `availability_status` text DEFAULT 'unavailable' NOT NULL;

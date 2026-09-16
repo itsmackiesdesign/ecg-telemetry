@@ -1,6 +1,6 @@
-const CACHE = 'pulsepoint-shell-v2';
+const CACHE = 'pulsepoint-shell-v4';
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['/', '/favicon.svg'])).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['/', '/favicon.svg', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-180.png'])).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('pulsepoint-shell-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
@@ -17,5 +17,5 @@ self.addEventListener('fetch', event => {
       event.waitUntil(caches.open(CACHE).then(cache => cache.put(isShell ? '/' : event.request, clone)));
     }
     return response;
-  }).catch(() => caches.match(isShell ? '/' : event.request).then(cached => cached || new Response('Offline asset unavailable. Open PulsePoint once while online.', {status:503}))));
+  }).catch(() => caches.match(isShell ? '/' : event.request).then(cached => cached || new Response('Offline asset unavailable. Откройте ЭКГ телеметрию при подключении к интернету.', {status:503}))));
 });

@@ -10,7 +10,8 @@ export const centerInputSchema = z.object({
   latitude: z.string().trim().max(32).optional().or(z.literal("")),
   longitude: z.string().trim().max(32).optional().or(z.literal("")),
   pciAvailable: z.boolean(),
-  acceptingPatients: z.boolean(),
+  acceptingPatients: z.boolean().optional().default(false),
+  availabilityStatus: z.enum(["accepting", "limited", "unavailable"]).optional().default("unavailable"),
 }).strict();
 
 export const handoverContextSchema = z.object({

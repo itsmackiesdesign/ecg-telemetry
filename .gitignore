@@ -51,3 +51,13 @@ next-env.d.ts
 .dev.vars.*
 !.dev.vars.example
 !.env.example
+
+# FastAPI runtime data and secrets
+backend/.venv/
+backend/.jwt-secret
+backend/*.db
+backend/*.db-*
+backend/storage/
+**/__pycache__/
+
+/dist-railway/

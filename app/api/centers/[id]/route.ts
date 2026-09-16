@@ -12,8 +12,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (!parsed.success) return reply({ error: "invalid_center" }, 400);
   const c = parsed.data;
   try {
-    const result = await env.DB.prepare("UPDATE centers SET name = ?, city = ?, address = ?, phone = ?, emergency_phone = ?, latitude = ?, longitude = ?, pci_available = ?, accepting_patients = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND manager_user_id = ?")
-      .bind(c.name, c.city, c.address, c.phone, c.emergencyPhone, c.latitude || null, c.longitude || null, c.pciAvailable ? 1 : 0, c.acceptingPatients ? 1 : 0, id, user.id).run();
+    const result = await env.DB.prepare("UPDATE centers SET name = ?, city = ?, address = ?, phone = ?, emergency_phone = ?, latitude = ?, longitude = ?, pci_available = ?, accepting_patients = ?, availability_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND manager_user_id = ?")
+      .bind(c.name, c.city, c.address, c.phone, c.emergencyPhone, c.latitude || null, c.longitude || null, c.pciAvailable ? 1 : 0, c.availabilityStatus === "accepting" ? 1 : 0, c.availabilityStatus, id, user.id).run();
     if (!result.meta.changes) return reply({ error: "center_not_found_or_not_manager" }, 404);
     return reply({ ok: true, id });
   } catch (error) { return reply({ error: centerError(error) }, 503); }

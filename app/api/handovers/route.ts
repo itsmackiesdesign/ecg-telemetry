@@ -16,9 +16,9 @@ export async function POST(request: Request) {
     if (!file || typeof file === "string" || !file.size || file.size > MAX_IMAGE_BYTES) return reply({ error: "invalid_image" }, 400);
     const context = handoverContextSchema.safeParse(JSON.parse(String(form.get("context"))));
     if (!context.success) return reply({ error: "invalid_input" }, 400);
-    const center = await env.DB.prepare("SELECT id, name, accepting_patients FROM centers WHERE id = ?").bind(context.data.centerId).first<{ id: string; name: string; accepting_patients: number }>();
+    const center = await env.DB.prepare("SELECT id, name, accepting_patients, availability_status FROM centers WHERE id = ?").bind(context.data.centerId).first<{ id: string; name: string; accepting_patients: number; availability_status?: string }>();
     if (!center) return reply({ error: "center_not_found" }, 404);
-    if (!center.accepting_patients) return reply({ error: "center_not_accepting" }, 409);
+    if (center.availability_status !== "accepting" && center.availability_status !== "limited") return reply({ error: "center_not_accepting" }, 409);
     const bytes = new Uint8Array(await file.arrayBuffer()); const mime = imageMime(bytes);
     if (!mime || mime !== file.type) return reply({ error: "invalid_image" }, 400);
     const id = crypto.randomUUID(); const objectKey = `handovers/${context.data.centerId}/${id}.${mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg"}`;

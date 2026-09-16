@@ -12,6 +12,7 @@ export const centers = sqliteTable("centers", {
   longitude: text("longitude"),
   pciAvailable: integer("pci_available", { mode: "boolean" }).notNull().default(false),
   acceptingPatients: integer("accepting_patients", { mode: "boolean" }).notNull().default(false),
+  availabilityStatus: text("availability_status", { enum: ["accepting", "limited", "unavailable"] }).notNull().default("unavailable"),
   managerUserId: text("manager_user_id").notNull(),
   managerEmail: text("manager_email").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

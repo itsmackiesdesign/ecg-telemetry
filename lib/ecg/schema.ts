@@ -1,6 +1,7 @@
 import { z } from 'zod';
 const texts = z.array(z.string());
 export const analysisSchema = z.object({
+  coronary_state:z.enum(['stemi_omi','ischemia_risk','low_risk']).nullable().optional(),
   analysis_status: z.enum(['completed', 'limited', 'unable_to_interpret']),
   image_quality: z.object({status:z.enum(['adequate','limited','uninterpretable']),readable_leads:texts,missing_or_unreadable_leads:texts,calibration_visible:z.boolean(),limitations:texts}).strict(),
   measurements:z.array(z.object({name:z.string(),value:z.number().nullable(),unit:z.string().nullable(),source:z.enum(['visual_estimate','device_printout','supplied_data']),approximate:z.boolean(),limitation:z.string().nullable()}).strict()),
