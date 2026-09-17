@@ -30,3 +30,17 @@ cd backend
 ```
 
 Integration tests use temporary SQLite and mocked OpenAI (no patient data or API charges). They cover roles, ownership, statuses, transfer, history, logout, multipart context, schema and clinical guardrails. Software tests are not clinical validation.
+
+### Diagnosing analysis failures
+
+The frontend distinguishes `provider_configuration` (key/model access),
+`provider_request_rejected` (request/model incompatibility), `provider_quota`
+(billing quota), `provider_connection` (network), `timeout`, and
+`provider_unavailable` (upstream service failure). In Railway deployment logs,
+search for `analysis_provider_error`. It includes the provider status, error
+code, parameter and request ID, without logging the ECG, patient context,
+API key or provider message. Check the deployed `OPENAI_MODEL` and credentials:
+local `.env` settings are not automatically copied to Railway.
+
+Analysis uses an 85-second upstream timeout without automatic retries so errors
+can return before the frontend's 100-second deadline.

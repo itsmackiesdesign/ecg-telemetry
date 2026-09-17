@@ -1,4 +1,6 @@
 import os,tempfile,unittest,json
+import httpx
+from openai import BadRequestError, PermissionDeniedError, NotFoundError, RateLimitError, InternalServerError, APIConnectionError, APITimeoutError
 from unittest.mock import patch,AsyncMock
 from types import SimpleNamespace
 TMP=tempfile.TemporaryDirectory()
@@ -60,6 +62,32 @@ class Workflow(unittest.TestCase):
   self.assertEqual(r.status_code,200,r.text);self.assertEqual(r.json()['analysis']['review_priority'],'emergency_review');self.assertIn('assessment_id',r.json())
   self.assertEqual(client.get('/assessments',headers=doctor).json()['assessments'][0]['patient_id'],'Test Patient Name')
   self.assertNotIn('Test Patient Name',str(mock.beta.chat.completions.parse.call_args))
+  self.assertNotIn('reasoning_effort',mock.beta.chat.completions.parse.call_args.kwargs)
   context['consent']=False
   self.assertEqual(client.post('/ecg/analyze',headers=doctor,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')}).status_code,422)
+ def test_provider_errors(self):
+  doctor=self.account('errors@example.com','doctor')
+  context={'language':'ru','consent':True,'patient':{'age':58,'sex':'male','symptom_onset':None,'systolic':120,'diastolic':80,'pulse':90,'spo2':95,'symptoms':[],'notes':'private note'}}
+  request=httpx.Request('POST','https://api.openai.com/v1/chat/completions')
+  cases=[]
+  for cls,status,code,expected,http_status in [
+   (BadRequestError,400,'unsupported_parameter','provider_request_rejected',502),
+   (BadRequestError,400,'invalid_image','invalid_image',422),
+   (PermissionDeniedError,403,'access_denied','provider_configuration',503),
+   (NotFoundError,404,'model_not_found','provider_configuration',503),
+   (RateLimitError,429,'insufficient_quota','provider_quota',503),
+   (RateLimitError,429,'rate_limit_exceeded','rate_limited',429),
+   (InternalServerError,500,'server_error','provider_unavailable',502),
+  ]:
+   cases.append((cls('private provider message',response=httpx.Response(status,request=request),body={'code':code,'param':'model'}),expected,http_status))
+  cases.extend([(APIConnectionError(request=request),'provider_connection',502),(APITimeoutError(request=request),'timeout',504)])
+  for exc,expected,status in cases:
+   with self.subTest(expected=expected):
+    mock=AsyncMock();mock.__aenter__.return_value=mock;mock.beta.chat.completions.parse.side_effect=exc
+    with patch('app.main.AsyncOpenAI',return_value=mock),patch.object(settings,'openai_api_key','private-key'),self.assertLogs('ecg.analysis',level='WARNING') as logs:
+     r=client.post('/ecg/analyze',headers=doctor,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')})
+    self.assertEqual(r.status_code,status,r.text)
+    self.assertEqual(r.json(),{'error':expected})
+    self.assertNotIn('private',str(logs.output))
+  self.assertEqual(client.get('/assessments',headers=doctor).json()['assessments'],[])
 if __name__=='__main__':unittest.main()

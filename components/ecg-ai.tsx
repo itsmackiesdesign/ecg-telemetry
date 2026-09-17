@@ -2,22 +2,21 @@
 import {apiFetch} from "@/lib/api-client";
 import {CoronaryState} from '@/components/coronary-state';
 import {useEffect,useRef,useState} from 'react';
-import {Sparkles,LoaderCircle,ShieldCheck,CircleAlert,Check,ArrowRight} from 'lucide-react';
+import {Sparkles,ShieldCheck,CircleAlert,Check,ArrowRight} from 'lucide-react';
 import {Button} from '@/components/ui/button';
-import {Checkbox} from '@/components/ui/checkbox';
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger} from '@/components/ui/accordion';
 import {analysisSchema,type AnalysisEnvelope,type ClinicalContext,type Language} from '@/lib/ecg/schema';
 const local=(lang:Language,en:string,uz:string,ru:string)=>lang==='uz'?uz:lang==='ru'?ru:en;
 export function useEcgAnalysis(file:File|null,patient:ClinicalContext['patient'],lang:Language,patientName=''){
- const [result,setResult]=useState<AnalysisEnvelope|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[consent,setConsent]=useState(false);
+ const [result,setResult]=useState<AnalysisEnvelope|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const [service,setService]=useState<{configured:boolean;signed_in:boolean}|null>(null);
  const controller=useRef<AbortController|null>(null),generation=useRef(0);
  const fingerprint=JSON.stringify({patient,lang});
- const reset=()=>{generation.current++;controller.current?.abort();setResult(null);setError('');setBusy(false);setConsent(false)};
+ const reset=()=>{generation.current++;controller.current?.abort();setResult(null);setError('');setBusy(false)};
  useEffect(()=>{reset();return()=>{generation.current++;controller.current?.abort()}},[file,fingerprint]);
  useEffect(()=>{const abort=new AbortController();apiFetch('/ecg/status',{cache:'no-store',signal:abort.signal}).then(r=>r.ok?r.json():null).then(value=>{if(value&&typeof value==='object'&&'configured' in value&&'signed_in' in value&&typeof value.configured==='boolean'&&typeof value.signed_in==='boolean')setService({configured:value.configured,signed_in:value.signed_in})}).catch(()=>{});return()=>abort.abort()},[]);
  async function analyze(){
-  if(!file||!consent||busy)return;
+  if(!file||busy)return;
   if(file.size>5*1024*1024){setError('file_too_large');return}
   if(!navigator.onLine){setError('offline');return}
   if(service?.configured===false){setError('not_configured');return}
@@ -36,7 +35,20 @@ export function useEcgAnalysis(file:File|null,patient:ClinicalContext['patient']
   finally{clearTimeout(deadline);if(generation.current===version)setBusy(false)}
  }
  function cancel(){generation.current++;controller.current?.abort();setBusy(false);setError('cancelled')}
- return {result,error,busy,consent,setConsent,service,analyze,cancel,reset};
+ return {result,error,busy,service,analyze,cancel,reset};
+}
+function AnalysisWaiting({lang}:{lang:Language}){
+ const [index,setIndex]=useState(0);
+ const messages=[
+  local(lang,'Analyzing ECG…','ЭКГ таҳлил қилинмоқда…','Анализируем ЭКГ…'),
+  local(lang,'Reading leads…','Уланмалар ўқилмоқда…','Читаем отведения…'),
+  local(lang,'Assessing rhythm…','Ритм баҳоланмоқда…','Оцениваем ритм…'),
+  local(lang,'Assessing ST segments…','ST сегментлари баҳоланмоқда…','Анализируем сегмент ST…'),
+  local(lang,'Assessing T waves…','T тишчалари баҳоланмоқда…','Оцениваем зубцы T…'),
+  local(lang,'Reviewing the clinical context…','Клиник маълумотлар кўриб чиқилмоқда…','Сопоставляем клинические данные…'),
+ ];
+ useEffect(()=>{const timer=window.setInterval(()=>setIndex(value=>(value+1)%6),3500);return()=>window.clearInterval(timer)},[]);
+ return <div className="analysis-waiting"><div role="status" aria-live="polite" aria-atomic="true"><span key={index} className="analysis-waiting-text">{messages[index]}</span></div></div>
 }
 export function AiControls({ai,lang,onReview}:{ai:ReturnType<typeof useEcgAnalysis>;lang:Language;onReview:()=>void}){
  const tr=(en:string,uz:string,ru:string)=>local(lang,en,uz,ru);
@@ -54,14 +66,18 @@ export function AiControls({ai,lang,onReview}:{ai:ReturnType<typeof useEcgAnalys
   file_too_large:tr('AI analysis accepts images up to 5 MB. Larger images remain available for clinician review.','СИ таҳлили 5 МБгача тасвир қабул қилади. Катта тасвирни шифокор кўриши мумкин.','Для ИИ-анализа — изображения до 5 МБ. Более крупные доступны для просмотра врачом.'),
   rate_limited:tr('The analysis service has reached its limit. Try again later.','Таҳлил хизмати лимитига етилди. Кейинроқ урининг.','Достигнут лимит сервиса анализа. Повторите позже.'),
   request_in_progress:tr('An analysis is already running. Wait for it to finish.','Таҳлил бажарилмоқда. Тугашини кутинг.','Анализ уже выполняется. Дождитесь завершения.'),
+  provider_unavailable:tr('The analysis service is temporarily unavailable. Please retry.','Таҳлил хизмати вақтинча ишламаяпти. Қайта урининг.','Сервис анализа временно недоступен. Повторите запрос.'),
+  provider_connection:tr('The server could not connect to the analysis service. Please retry.','Сервер таҳлил хизматига улана олмади. Қайта урининг.','Сервер не смог подключиться к сервису анализа. Повторите запрос.'),
+  provider_quota:tr('The analysis service quota is exhausted. Ask the administrator to check billing.','Таҳлил хизмати квотаси тугади. Администратор тўловни текшириши керак.','Исчерпана квота сервиса анализа. Администратору нужно проверить баланс и лимиты.'),
+  provider_request_rejected:tr('The analysis service rejected the request. The administrator should check the model configuration and server logs.','Таҳлил хизмати сўровни рад этди. Администратор модель созламалари ва сервер журналини текшириши керак.','Сервис анализа отклонил запрос. Администратору нужно проверить настройки модели и журнал сервера.'),
   provider_configuration:tr('The server API credentials or model access need attention.','Сервер API калити ёки модель рухсатини текшириш керак.','Нужно проверить API-ключ или доступ сервера к модели.'),
  };
  return <div className="ai-panel"><div className="ai-panel-title"><Sparkles size={20}/><div><h3>{tr('Analyze with AI','СИ билан таҳлил','Анализ с ИИ')}</h3><p>{tr('Preliminary interpretation · physician review required','Дастлабки талқин · шифокор тасдиғи зарур','Предварительная интерпретация · требуется проверка врача')}</p></div></div>
- <label className="ai-consent"><Checkbox disabled={ai.busy} checked={ai.consent} onCheckedChange={v=>ai.setConsent(v===true)}/><span>{tr('I authorize sending this ECG image, age, sex, symptoms, vital signs and notes to the external analysis service for analysis. I have removed identifying information from the image and notes.','ЭКГ тасвири, ёш, жинс, симптомлар, кўрсаткичлар ва изоҳларни ташқи таҳлил хизматига таҳлил учун юборишга рухсат бераман. Тасвир ва изоҳлардан шахсий маълумотларни олиб ташладим.','Разрешаю передать изображение ЭКГ, возраст, пол, симптомы, показатели и заметки во внешний сервис анализа для анализа. Я удалил идентифицирующие сведения из изображения и заметок.')}</span></label>
+ <p className="ai-privacy">{tr('Clicking Analyze ECG sends the image and clinical details to the external analysis service. Remove identifying information from the image and notes beforehand.','ЭКГни таҳлил қилиш тугмаси тасвир ва клиник маълумотларни ташқи таҳлил хизматига юборади. Аввал тасвир ва изоҳлардан шахсий маълумотларни олиб ташланг.','Нажатие «Анализировать ЭКГ» отправляет изображение и клинические данные во внешний сервис анализа. Предварительно удалите идентифицирующие сведения из изображения и заметок.')}</p>
  <p className="ai-privacy">{tr('Large photos are compressed locally before analysis. Review the prepared image. No automatic upload. Patient ID is excluded. The image and validated result are saved to your case history; the external analysis service retention rules still apply.','Катта тасвирлар таҳлилдан олдин қурилмада сиқилади. Тайёр тасвирни текширинг. Автоматик юклаш йўқ. Бемор IDси юборилмайди. Тасвир ва тасдиқланган жавоб ҳолатлар тарихида сақланади; ташқи таҳлил хизмати сақлаш қоидалари амал қилади.','Большие фото сжимаются на устройстве до анализа. Проверьте подготовленное изображение. Автоматической отправки нет. ID пациента не передаётся. Изображение и проверенный ответ сохраняются в вашей истории; действуют правила хранения внешнего сервиса анализа.')}</p>
  {ai.service?.configured===false&&<p className="ai-setup">{errors.not_configured}</p>}
- <div className="ai-actions"><Button disabled={!ai.consent||ai.busy} onClick={ai.analyze}>{ai.busy?<LoaderCircle className="animate-spin"/>:<Sparkles/>}{ai.busy?tr('Analyzing ECG…','ЭКГ таҳлил қилинмоқда…','Анализ ЭКГ…'):tr('Analyze ECG','ЭКГни таҳлил қилиш','Анализировать ЭКГ')}</Button>{ai.busy&&<Button variant="outline" onClick={ai.cancel}>{tr('Cancel','Бекор қилиш','Отменить')}</Button>}</div>
- {ai.busy&&<p role="status" className="ai-privacy">{tr('Checking image quality and ECG findings. Do not delay urgent care.','Тасвир сифати ва ЭКГ текширилмоқда. Шошилинч ёрдамни кечиктирманг.','Проверяем качество изображения и признаки на ЭКГ. Не задерживайте неотложную помощь.')}</p>}
+ <div className="ai-actions"><Button disabled={ai.busy} onClick={ai.analyze}>{!ai.busy&&<Sparkles/>}{ai.busy?tr('Waiting for response…','Жавоб кутилмоқда…','Ожидаем ответ…'):tr('Analyze ECG','ЭКГни таҳлил қилиш','Анализировать ЭКГ')}</Button>{ai.busy&&<Button variant="outline" onClick={ai.cancel}>{tr('Cancel','Бекор қилиш','Отменить')}</Button>}</div>
+ {ai.busy&&<AnalysisWaiting lang={lang}/>}{ai.busy&&<p className="ai-privacy">{tr('Checking image quality and ECG findings. Do not delay urgent care.','Тасвир сифати ва ЭКГ текширилмоқда. Шошилинч ёрдамни кечиктирманг.','Проверяем качество изображения и признаки на ЭКГ. Не задерживайте неотложную помощь.')}</p>}
  {ai.error&&<div role="alert" className="ai-error"><CircleAlert size={18}/><div>{errors[ai.error]||tr('Analysis is unavailable. No result has been generated.','Таҳлил мавжуд эмас. Натижа яратилмади.','Анализ недоступен. Результат не сформирован.')}{ai.error==='sign_in_required'&&<a href="/" target="_top">{tr('Sign in','Кириш','Войти')}</a>}</div></div>}
  {ai.result&&<div className="ai-success"><Check size={18}/><span>{tr('Response received. Review the findings and limitations.','Жавоб олинди. Натижалар ва чекловларни текширинг.','Ответ получен. Проверьте находки и ограничения.')}</span><Button variant="outline" onClick={onReview}>{tr('View result','Натижа','Результат')}<ArrowRight size={14}/></Button></div>}
  </div>

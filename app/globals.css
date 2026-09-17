@@ -80,3 +80,9 @@
 .ecg-image-scroll img{display:block;width:100%;height:auto}
 .ecg-viewer>a{color:#087e74;text-decoration:underline;min-height:44px;display:flex;align-items:center}
 @media(max-width:600px){.manager-navigation{display:grid;grid-template-columns:1fr 1fr;gap:8px}.manager-handovers .history-heading{align-items:flex-start;gap:12px}.handover-card{padding:16px}}
+
+.analysis-waiting{margin-top:16px;padding:20px;border:1px solid #bce5df;border-radius:14px;background:#effaf7;text-align:center}
+.analysis-waiting-text{display:block;font-size:clamp(17px,4vw,22px);font-weight:600;color:#11685e;animation:analysis-text-appear .4s ease-out}
+.analysis-waiting p{margin:10px 0 0;font-size:12px;color:#536e69;line-height:1.5}
+@keyframes analysis-text-appear{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.analysis-waiting-text{animation:none}}

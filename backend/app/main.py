@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 from typing import Literal
-import base64, json, sqlite3, secrets
+import base64, json, sqlite3, secrets, logging, re
 from contextlib import contextmanager
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
@@ -14,7 +14,9 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pydantic import BaseModel, Field, ConfigDict, ValidationError
 from pydantic_settings import BaseSettings
-from openai import AsyncOpenAI, AuthenticationError, RateLimitError, APITimeoutError, APIError
+from openai import AsyncOpenAI, AuthenticationError, RateLimitError, APITimeoutError, APIError, APIConnectionError, APIStatusError
+
+logger = logging.getLogger('ecg.analysis')
 
 ROOT = Path(__file__).resolve().parents[1]
 class Settings(BaseSettings):
@@ -223,6 +225,26 @@ def handover_ecg(id:str,user=Depends(current)):
 @app.get('/ecg/status')
 def ecg_status(user=Depends(current)): return {'configured':bool(settings.openai_api_key),'signed_in':True}
 from .ecg import Analysis, Context, guardrails
+def provider_error(exc):
+    # Never log provider messages, request bodies, images, patient details or keys.
+    def safe(value):
+        return re.sub(r'[^a-zA-Z0-9_.:-]', '_', str(value or 'unknown'))[:100]
+    logger.warning('analysis_provider_error type=%s status=%s code=%s param=%s request_id=%s',
+        type(exc).__name__, getattr(exc,'status_code',None), safe(getattr(exc,'code',None)),
+        safe(getattr(exc,'param',None)), safe(getattr(exc,'request_id',None)))
+    if isinstance(exc, AuthenticationError): return HTTPException(503,'provider_configuration')
+    if isinstance(exc, RateLimitError):
+        return HTTPException(503,'provider_quota') if getattr(exc,'code',None)=='insufficient_quota' else HTTPException(429,'rate_limited')
+    if isinstance(exc, APITimeoutError): return HTTPException(504,'timeout')
+    if isinstance(exc, APIConnectionError): return HTTPException(502,'provider_connection')
+    if isinstance(exc, APIStatusError):
+        if exc.status_code in (401,403,404): return HTTPException(503,'provider_configuration')
+        if exc.status_code in (400,422):
+            if getattr(exc,'code',None) in ('invalid_image','invalid_image_format','image_parse_error'):
+                return HTTPException(422,'invalid_image')
+            return HTTPException(502,'provider_request_rejected')
+    return HTTPException(502,'provider_unavailable')
+
 @app.post('/ecg/analyze')
 async def analyze(context:str=Form(...),image:UploadFile=File(...),patient_name:str=Form('',max_length=200),user=Depends(current)):
     role(user,'doctor')
@@ -241,11 +263,9 @@ async def analyze(context:str=Form(...),image:UploadFile=File(...),patient_name:
         envelope={'analysis':analysis.model_dump(),'model':settings.openai_model,'prompt_version':'pulsepoint-ecg-1.2.0','model_coronary_state':model_coronary_state,'analyzed_at':now(),'guardrails':guards,'ecg_path':key}
         saved=save_assessment(Assessment(patient_id=patient_name.strip(),patient=ctx.patient.model_dump(),ai_result=envelope,ecg_path=key),user)
         return {**envelope,'assessment_id':saved['id']}
-    except AuthenticationError: raise HTTPException(503,'provider_configuration')
-    except RateLimitError: raise HTTPException(429,'rate_limited')
-    except APITimeoutError: raise HTTPException(504,'timeout')
     except (ValidationError,ValueError): raise HTTPException(502,'invalid_response')
-    except APIError: raise HTTPException(502,'provider_unavailable')
+    except APIError as exc: raise provider_error(exc) from None
+
 
 
 # Registered after API routes: the production frontend shares the API origin.
