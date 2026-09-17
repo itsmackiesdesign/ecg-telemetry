@@ -21,8 +21,8 @@ export type AnalysisEnvelope = {analysis:EcgAnalysis;model:string;prompt_version
 export const patientSchema=z.object({
   age:z.number().int().min(18).max(120),sex:z.enum(['male','female']),
   symptom_onset:z.string().max(80).nullable(),
-  systolic:z.number().min(40).max(300),diastolic:z.number().min(20).max(200),
-  pulse:z.number().min(20).max(300),spo2:z.number().min(30).max(100),
+  systolic:z.number().max(300),diastolic:z.number().max(200),
+  pulse:z.number().max(300),spo2:z.number().max(100),
   symptoms:z.array(z.enum(['chest','breath','sweat','nausea','radiating','dizzy'])).max(6),
   notes:z.string().max(4000),
 }).strict().refine(p=>p.diastolic<=p.systolic,{message:'Invalid blood pressure'});

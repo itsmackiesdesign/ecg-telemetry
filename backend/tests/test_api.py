@@ -31,7 +31,21 @@ class Workflow(unittest.TestCase):
   context={'centerId':id,'transferConsent':True,'patient':{'age':58}}
   r=client.post('/handovers',headers=doctor,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')});self.assertEqual(r.status_code,200,r.text);hid=r.json()['handoverId']
   self.assertEqual(len(client.get('/centers/'+id+'/handovers',headers=manager).json()['handovers']),1)
-  self.assertEqual(client.get('/handovers/'+hid+'/ecg',headers=manager).status_code,200)
+  feed=client.get('/handovers',headers=manager)
+  self.assertEqual(feed.status_code,200)
+  item=feed.json()['handovers'][0]
+  self.assertEqual(item['id'],hid)
+  self.assertEqual(item['center_name'],'Test Center')
+  self.assertEqual(item['created_by'],{'email':'doctor@example.com','display_name':'doctor@example.com'})
+  self.assertTrue(item['created_at'])
+  self.assertEqual(client.get('/handovers',headers=stranger).json()['handovers'],[])
+  self.assertEqual(client.get('/handovers',headers=doctor).status_code,403)
+  self.assertEqual(client.get('/handovers').status_code,401)
+  image=client.get('/handovers/'+hid+'/ecg',headers=manager)
+  self.assertEqual(image.status_code,200)
+  self.assertEqual(image.content,PNG)
+  self.assertEqual(image.headers['content-type'],'image/png')
+  self.assertEqual(client.get('/handovers/'+hid+'/ecg').status_code,401)
   self.assertEqual(client.get('/handovers/'+hid+'/ecg',headers=stranger).status_code,404)
   data['availabilityStatus']='unavailable';client.put('/centers/'+id,headers=manager,json=data)
   self.assertEqual(client.post('/handovers',headers=doctor,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')}).status_code,409)

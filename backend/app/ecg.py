@@ -45,10 +45,10 @@ class Patient(Strict):
     age:int=Field(ge=18,le=120)
     sex:Literal['male','female']
     symptom_onset:str|None
-    systolic:float=Field(ge=40,le=300)
-    diastolic:float=Field(ge=20,le=200)
-    pulse:float=Field(ge=20,le=300)
-    spo2:float=Field(ge=30,le=100)
+    systolic:float=Field(le=300)
+    diastolic:float=Field(le=200)
+    pulse:float=Field(le=300)
+    spo2:float=Field(le=100)
     symptoms:list[Literal['chest','breath','sweat','nausea','radiating','dizzy']]
     notes:str=Field(max_length=4000)
     @model_validator(mode='after')

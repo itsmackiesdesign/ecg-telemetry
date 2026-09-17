@@ -24,7 +24,7 @@ export function ManagerHandovers({lang}: {lang: Language}) {
     setLoading(true); setError(false);
     apiFetch('/handovers', {signal: controller.signal}).then(async r => {
       if (!r.ok) throw new Error('load_failed');
-      return (await r.json()).handovers as Handover[];
+      return ((await r.json()) as {handovers: Handover[]}).handovers;
     }).then(data => {if (!controller.signal.aborted) setRows(data);})
       .catch(() => {if (!controller.signal.aborted) setError(true);})
       .finally(() => {if (!controller.signal.aborted) setLoading(false);});

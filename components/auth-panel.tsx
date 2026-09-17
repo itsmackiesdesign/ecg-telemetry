@@ -1,5 +1,5 @@
 "use client";
-import {apiFetch,openEcg} from "@/lib/api-client";
+import {apiFetch} from "@/lib/api-client";
 import { useState } from "react";
 import { Activity, CircleAlert, LockKeyhole, LogIn, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
