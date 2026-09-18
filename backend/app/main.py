@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-from pydantic import BaseModel, Field, ConfigDict, ValidationError
+from pydantic import BaseModel, Field, ConfigDict, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from openai import AsyncOpenAI, AuthenticationError, RateLimitError, APITimeoutError, APIError, APIConnectionError, APIStatusError
 
@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ''
     openai_model: str = 'gpt-4o-mini'
     ecg_storage_dir: str = str(ROOT / 'storage')
+    routing_base_url: str = 'https://router.project-osrm.org'
     frontend_dist: str = ''
     cors_origins: str = 'http://localhost:5174,http://127.0.0.1:5174'
     model_config = ConfigDict(env_file=str(ROOT / '.env'), extra='ignore')
@@ -50,6 +51,7 @@ with database() as db:
     create table if not exists centers(id text primary key, owner text not null, data text not null);
     create table if not exists uploads(id text primary key, owner text not null, mime text not null);
     create table if not exists handovers(id text primary key, center_id text not null, owner text not null, data text not null, ecg_path text not null, created_at text not null);
+    create table if not exists route_estimates(id text primary key, owner text, center_id text, data text, created_at text);
     create table if not exists revoked_tokens(id text primary key);
     ''')
 pwd = CryptContext(schemes=['pbkdf2_sha256','bcrypt'], deprecated='auto')
@@ -112,6 +114,20 @@ class Center(BaseModel):
     emergencyPhone:str=Field(min_length=5,max_length=40)
     latitude:str=''
     longitude:str=''
+    @field_validator('latitude','longitude',mode='before')
+    @classmethod
+    def coordinate(cls,value,info):
+        raw=str(value if value is not None else '').strip().replace(',','.')
+        if not raw: return ''
+        if not re.fullmatch(r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)',raw): raise ValueError('invalid_coordinate')
+        number=float(raw)
+        limit=90 if info.field_name=='latitude' else 180
+        if not -limit<=number<=limit: raise ValueError('invalid_coordinate')
+        return str(number)
+    @model_validator(mode='after')
+    def coordinate_pair(self):
+        if bool(self.latitude)!=bool(self.longitude): raise ValueError('coordinate_pair_required')
+        return self
     pciAvailable:bool=True
     acceptingPatients:bool=False
     availabilityStatus:Literal['accepting','limited','unavailable']='unavailable'
@@ -172,6 +188,23 @@ def assessments(user=Depends(current)):
     role(user,'doctor')
     with database() as db: rows=db.execute('select * from assessments where doctor_email=? order by created_at desc',(user['email'],)).fetchall()
     return {'assessments':[{**dict(r),'patient':json.loads(r['patient_json']),'ai_result':json.loads(r['ai_result']) if r['ai_result'] else None} for r in rows]}
+from .routing import Origin, destination, estimate
+
+@app.post('/centers/{id}/route')
+async def center_route(id:str, origin:Origin, user=Depends(current)):
+    role(user,'doctor')
+    with database() as db:
+        row=db.execute('select data from centers where id=?',(id,)).fetchone()
+    if not row: raise HTTPException(404,'center_not_found')
+    target=destination(json.loads(row['data']))
+    route=await estimate(settings.routing_base_url,origin,target)
+    created=now(); quote_id=str(uuid4())
+    route.update({'id':quote_id,'center_id':id,'destination':target.model_dump(),'calculated_at':created})
+    with database() as db:
+        db.execute('delete from route_estimates where created_at<?',((datetime.now(timezone.utc)-timedelta(hours=1)).isoformat(),))
+        db.execute('insert into route_estimates values(?,?,?,?,?)',(quote_id,user['email'],id,json.dumps(route),created))
+    return {'route':route}
+
 @app.post('/handovers')
 async def handover(context:str=Form(...),image:UploadFile=File(...),user=Depends(current)):
     role(user,'doctor')
@@ -183,6 +216,19 @@ async def handover(context:str=Form(...),image:UploadFile=File(...),user=Depends
         center=db.execute('select data from centers where id=?',(data.get('centerId'),)).fetchone()
         if not center: raise HTTPException(404,'center_not_found')
         if json.loads(center['data'])['availability_status']=='unavailable': raise HTTPException(409,'center_not_accepting')
+    # Accept only a fresh, server-computed estimate belonging to this sender and center.
+    data.pop('transport',None)
+    quote_id=data.pop('routeEstimateId',None)
+    if quote_id:
+        with database() as db:
+            quote=db.execute('select * from route_estimates where id=? and owner=? and center_id=?',(quote_id,user['email'],data['centerId'])).fetchone()
+        if not quote: raise HTTPException(422,'route_estimate_invalid')
+        if datetime.now(timezone.utc)-datetime.fromisoformat(quote['created_at'])>timedelta(minutes=10): raise HTTPException(409,'route_estimate_expired')
+        route=json.loads(quote['data'])
+        if route['destination']!=destination(json.loads(center['data'])).model_dump(): raise HTTPException(409,'route_estimate_expired')
+        departure=datetime.now(timezone.utc)
+        data['transport']={**route,'departure_at':departure.isoformat(),
+            'expected_arrival_at':(departure+timedelta(seconds=route['duration_seconds'])).isoformat()}
     key,_,_=await save_image(image,user)
     with database() as db: db.execute('insert into handovers values(?,?,?,?,?,?)',(id,data['centerId'],user['email'],json.dumps(data),key,now()))
     return {'handoverId':id}

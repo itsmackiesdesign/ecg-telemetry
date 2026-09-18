@@ -65,6 +65,62 @@ class Workflow(unittest.TestCase):
   self.assertNotIn('reasoning_effort',mock.beta.chat.completions.parse.call_args.kwargs)
   context['consent']=False
   self.assertEqual(client.post('/ecg/analyze',headers=doctor,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')}).status_code,422)
+ def test_center_coordinates(self):
+  manager=self.account('coordinates@example.com','manager')
+  data={'name':'Coordinate test','city':'Bukhara','address':'Test street','phone':'1234567','emergencyPhone':'1234567','latitude':' 39,7747 ','longitude':64.4286}
+  r=client.post('/centers',headers=manager,json=data)
+  self.assertEqual(r.status_code,200,r.text)
+  center=r.json()['center']
+  self.assertEqual(center['latitude'],'39.7747')
+  self.assertEqual(center['longitude'],'64.4286')
+  for lat,lon in [('91','64'),('39','181'),('39',''),('nan','64'),('39','bad')]:
+   r=client.put('/centers/'+center['id'],headers=manager,json={**data,'latitude':lat,'longitude':lon})
+   self.assertEqual(r.status_code,422,r.text)
+  saved=client.get('/centers?mine=1',headers=manager).json()['centers'][0]
+  self.assertEqual(saved['latitude'],'39.7747')
+  self.assertEqual(saved['longitude'],'64.4286')
+ def test_route_handover(self):
+  from datetime import datetime,timezone,timedelta
+  from app.main import database
+  doctor=self.account('route-doctor@example.com','doctor');other=self.account('route-other@example.com','doctor');manager=self.account('route-manager@example.com','manager')
+  data={'name':'Route Center','city':'Bukhara','address':'Test street','phone':'1234567','emergencyPhone':'1234567','latitude':'39.77','longitude':'64.42','availabilityStatus':'accepting'}
+  cid=client.post('/centers',headers=manager,json=data).json()['id']
+  origin={'latitude':39.8,'longitude':64.5}
+  self.assertEqual(client.post('/centers/'+cid+'/route',headers=manager,json=origin).status_code,403)
+  self.assertEqual(client.post('/centers/'+cid+'/route',headers=doctor,json={'latitude':100,'longitude':64}).status_code,422)
+  with patch('app.main.estimate',new=AsyncMock(return_value={'duration_seconds':600,'distance_meters':4500,'provider':'OSRM','traffic_included':False})):
+   r=client.post('/centers/'+cid+'/route',headers=doctor,json=origin)
+  self.assertEqual(r.status_code,200,r.text);quote=r.json()['route']
+  context={'centerId':cid,'transferConsent':True,'patient':{},'routeEstimateId':quote['id'],'transport':{'duration_seconds':1}}
+  def send(headers):return client.post('/handovers',headers=headers,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')})
+  self.assertEqual(send(other).status_code,422)
+  r=send(doctor);self.assertEqual(r.status_code,200,r.text)
+  transport=client.get('/handovers',headers=manager).json()['handovers'][0]['patient']['transport']
+  self.assertEqual(transport['duration_seconds'],600)
+  arrival=datetime.fromisoformat(transport['expected_arrival_at']);departure=datetime.fromisoformat(transport['departure_at'])
+  self.assertEqual((arrival-departure).total_seconds(),600)
+  with database() as db:db.execute('update route_estimates set created_at=? where id=?',((datetime.now(timezone.utc)-timedelta(minutes=11)).isoformat(),quote['id']))
+  self.assertEqual(send(doctor).status_code,409)
+  del context['routeEstimateId']
+  r=send(doctor);self.assertEqual(r.status_code,200,r.text)
+  latest=client.get('/handovers',headers=manager).json()['handovers'][0]
+  self.assertNotIn('transport',latest['patient'])
+
+ def test_routing_provider(self):
+  import asyncio
+  from app.routing import estimate,Origin
+  origin=Origin(latitude=39.8,longitude=64.5);target=Origin(latitude=39.77,longitude=64.42)
+  mock=AsyncMock();mock.__aenter__.return_value=mock
+  mock.get.return_value=httpx.Response(200,json={'code':'Ok','routes':[{'duration':600.2,'distance':4500}]},request=httpx.Request('GET','https://routing.test'))
+  with patch('app.routing.httpx.AsyncClient',return_value=mock):
+   result=asyncio.run(estimate('https://routing.test',origin,target))
+  self.assertEqual(result['duration_seconds'],601)
+  self.assertIn('64.5,39.8;64.42,39.77',mock.get.call_args.args[0])
+  mock.get.return_value=httpx.Response(200,json={'code':'NoRoute'},request=httpx.Request('GET','https://routing.test'))
+  from fastapi import HTTPException
+  with patch('app.routing.httpx.AsyncClient',return_value=mock),self.assertRaises(HTTPException) as error:
+   asyncio.run(estimate('https://routing.test',origin,target))
+  self.assertEqual(error.exception.detail,'route_not_found')
  def test_provider_errors(self):
   doctor=self.account('errors@example.com','doctor')
   context={'language':'ru','consent':True,'patient':{'age':58,'sex':'male','symptom_onset':None,'systolic':120,'diastolic':80,'pulse':90,'spo2':95,'symptoms':[],'notes':'private note'}}

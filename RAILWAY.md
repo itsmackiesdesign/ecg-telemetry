@@ -47,3 +47,20 @@ docker run --rm -p 8000:8000 --env-file backend/.env \
 Проверены локальная production-сборка, раздача frontend через FastAPI, health, manifest, icons, авторизация API и backend-тесты. Сам Docker image локально не запускался: Docker CLI отсутствует.
 
 Документация Railway: https://docs.railway.com/builds/dockerfiles, https://docs.railway.com/volumes, https://docs.railway.com/deployments/healthchecks.
+
+### Driving routes and arrival estimates
+
+The backend calls OSRM with the doctor's browser coordinates and the center's
+saved latitude/longitude. It sends no patient names, notes or ECGs to OSRM.
+`ROUTING_BASE_URL` defaults to `https://router.project-osrm.org` (public demo).
+For a production deployment, set this variable to a dedicated OSRM driving
+instance: the public demo has no availability guarantee. No routing API key is
+required by the default service. Browser geolocation requires HTTPS (or localhost)
+and user permission.
+
+Travel time excludes live traffic and ambulance-specific driving privileges.
+Handover ETA assumes departure when the handover is sent. Managers see a local
+countdown from the stored arrival timestamp, not live vehicle tracking. Route
+quotes expire after 10 minutes; the interface requests recalculation after 9.
+Existing handovers and transfers without a route show no ETA. Route failures never
+produce a guessed straight-line driving time or block a transfer without ETA.
