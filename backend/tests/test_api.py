@@ -121,6 +121,29 @@ class Workflow(unittest.TestCase):
   with patch('app.routing.httpx.AsyncClient',return_value=mock),self.assertRaises(HTTPException) as error:
    asyncio.run(estimate('https://routing.test',origin,target))
   self.assertEqual(error.exception.detail,'route_not_found')
+ def test_superadmin_deletion(self):
+  from app.main import database
+  doctor=self.account('delete-doctor@example.com','doctor');manager=self.account('delete-manager@example.com','manager')
+  admin=self.account('admin@example.com','doctor')
+  with database() as db:db.execute("update users set role='superadmin' where email='admin@example.com'")
+  self.assertEqual(client.post('/auth/register',json={'email':'elevate@example.com','password':'TestPassword2026!','display_name':'Admin','role':'superadmin'}).status_code,422)
+  data={'name':'Delete test','city':'Bukhara','address':'Test street','phone':'1234567','emergencyPhone':'1234567','availabilityStatus':'accepting'}
+  cid=client.post('/centers',headers=manager,json=data).json()['id']
+  context={'centerId':cid,'transferConsent':True,'patient':{}}
+  def send():return client.post('/handovers',headers=doctor,data={'context':json.dumps(context)},files={'image':('ecg.png',PNG,'image/png')})
+  hid=send().json()['handoverId']
+  for user in (doctor,manager):
+   self.assertEqual(client.get('/admin/centers',headers=user).status_code,403)
+   self.assertEqual(client.delete('/admin/centers/'+cid,headers=user).status_code,403)
+  self.assertEqual(client.delete('/admin/centers/'+cid).status_code,401)
+  self.assertTrue(any(c['id']==cid for c in client.get('/admin/centers',headers=admin).json()['centers']))
+  self.assertEqual(client.delete('/admin/centers/'+cid,headers=admin).status_code,200)
+  self.assertFalse(any(c['id']==cid for c in client.get('/centers',headers=doctor).json()['centers']))
+  self.assertEqual(client.put('/centers/'+cid,headers=manager,json=data).status_code,404)
+  self.assertEqual(send().status_code,404)
+  self.assertEqual(client.get('/handovers/'+hid+'/ecg',headers=manager).status_code,200)
+  self.assertTrue(any(h['id']==hid for h in client.get('/handovers',headers=manager).json()['handovers']))
+  self.assertEqual(client.delete('/admin/centers/'+cid,headers=admin).status_code,404)
  def test_provider_errors(self):
   doctor=self.account('errors@example.com','doctor')
   context={'language':'ru','consent':True,'patient':{'age':58,'sex':'male','symptom_onset':None,'systolic':120,'diastolic':80,'pulse':90,'spo2':95,'symptoms':[],'notes':'private note'}}

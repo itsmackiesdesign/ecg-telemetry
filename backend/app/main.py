@@ -54,6 +54,8 @@ with database() as db:
     create table if not exists route_estimates(id text primary key, owner text, center_id text, data text, created_at text);
     create table if not exists revoked_tokens(id text primary key);
     ''')
+    if 'deleted_at' not in {r['name'] for r in db.execute('pragma table_info(centers)')}:
+        db.execute('alter table centers add column deleted_at text')
 pwd = CryptContext(schemes=['pbkdf2_sha256','bcrypt'], deprecated='auto')
 app = FastAPI(title='ЭКГ телеметрия API')
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins.split(','), allow_methods=['*'], allow_headers=['*'])
@@ -136,19 +138,34 @@ def center_data(id,data,user):
 @app.get('/centers')
 def centers(mine:int=0,user=Depends(current)):
     with database() as db:
-        rows=db.execute('select data from centers'+(' where owner=?' if mine else ''),(user['email'],) if mine else ()).fetchall()
+        rows=db.execute('select data from centers where deleted_at is null'+(' and owner=?' if mine else ''),(user['email'],) if mine else ()).fetchall()
     return {'centers':sorted([json.loads(r['data']) for r in rows],key=lambda c:({'accepting':0,'limited':1,'unavailable':2}[c['availability_status']],c['name']))}
 @app.post('/centers')
 def create_center(data:Center,user=Depends(current)):
     role(user,'manager'); id=str(uuid4()); c=center_data(id,data,user)
-    with database() as db: db.execute('insert into centers values(?,?,?)',(id,user['email'],json.dumps(c)))
+    with database() as db: db.execute('insert into centers(id,owner,data) values(?,?,?)',(id,user['email'],json.dumps(c)))
     return {'id':id,'center':c}
 @app.put('/centers/{id}')
 def update_center(id:str,data:Center,user=Depends(current)):
     role(user,'manager'); c=center_data(id,data,user)
     with database() as db:
-        if not db.execute('update centers set data=? where id=? and owner=?',(json.dumps(c),id,user['email'])).rowcount: raise HTTPException(404,'center_not_found')
+        if not db.execute('update centers set data=? where id=? and owner=? and deleted_at is null',(json.dumps(c),id,user['email'])).rowcount: raise HTTPException(404,'center_not_found')
     return {'id':id,'center':c}
+@app.get('/admin/centers')
+def admin_centers(user=Depends(current)):
+    role(user,'superadmin')
+    with database() as db:
+        rows=db.execute('select data from centers where deleted_at is null').fetchall()
+    return {'centers':[json.loads(row['data']) for row in rows]}
+
+@app.delete('/admin/centers/{id}')
+def delete_center(id:str,user=Depends(current)):
+    role(user,'superadmin')
+    with database() as db:
+        if not db.execute('update centers set deleted_at=? where id=? and deleted_at is null',(now(),id)).rowcount:
+            raise HTTPException(404,'center_not_found')
+    return {'ok':True}
+
 async def save_image(image,user,limit=15*1024*1024):
     raw=await image.read(limit+1)
     if len(raw)>limit: raise HTTPException(413,'file_too_large')
@@ -194,7 +211,7 @@ from .routing import Origin, destination, estimate
 async def center_route(id:str, origin:Origin, user=Depends(current)):
     role(user,'doctor')
     with database() as db:
-        row=db.execute('select data from centers where id=?',(id,)).fetchone()
+        row=db.execute('select data from centers where id=? and deleted_at is null',(id,)).fetchone()
     if not row: raise HTTPException(404,'center_not_found')
     target=destination(json.loads(row['data']))
     route=await estimate(settings.routing_base_url,origin,target)
@@ -213,7 +230,7 @@ async def handover(context:str=Form(...),image:UploadFile=File(...),user=Depends
     if not isinstance(data,dict) or data.get('transferConsent') is not True or not isinstance(data.get('patient'),dict): raise HTTPException(422,'invalid_input')
     id=str(uuid4())
     with database() as db:
-        center=db.execute('select data from centers where id=?',(data.get('centerId'),)).fetchone()
+        center=db.execute('select data from centers where id=? and deleted_at is null',(data.get('centerId'),)).fetchone()
         if not center: raise HTTPException(404,'center_not_found')
         if json.loads(center['data'])['availability_status']=='unavailable': raise HTTPException(409,'center_not_accepting')
     # Accept only a fresh, server-computed estimate belonging to this sender and center.

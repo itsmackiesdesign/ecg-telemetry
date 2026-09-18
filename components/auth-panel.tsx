@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Language } from "@/lib/ecg/schema";
 
-export type AuthUser = { id: string; email: string; displayName: string; role: "doctor" | "manager" };
+export type AuthUser = { id: string; email: string; displayName: string; role: "doctor" | "manager" | "superadmin" };
 const tr = (lang: Language, en: string, uz: string, ru: string) => lang === "uz" ? uz : lang === "ru" ? ru : en;
 const errors: Record<string, [string, string, string]> = { invalid_credentials: ["Email or password is incorrect.", "Email ёки пароль нотўғри.", "Неверный email или пароль."], email_exists: ["An account with this email already exists.", "Бу email билан аккаунт мавжуд.", "Аккаунт с таким email уже существует."], invalid_input: ["Use a valid email, a name and a password of at least 10 characters.", "Тўғри email, исм ва камида 10 белгили пароль киритинг.", "Укажите email, имя и пароль не короче 10 символов."], auth_not_configured: ["Account service is not configured yet.", "Аккаунт хизмати ҳали созланмаган.", "Сервис аккаунтов ещё не настроен."] };
 export function AuthPanel({ lang, onAuthenticated }: { lang: Language; onAuthenticated: (user: AuthUser) => void }) {

@@ -64,3 +64,21 @@ countdown from the stored arrival timestamp, not live vehicle tracking. Route
 quotes expire after 10 minutes; the interface requests recalculation after 9.
 Existing handovers and transfers without a route show no ETA. Route failures never
 produce a guessed straight-line driving time or block a transfer without ETA.
+
+### Superadministrator
+
+After deploying, open a shell inside the running Railway service (with its `/data`
+volume and environment). Run:
+
+```sh
+cd /app
+python -m app.create_superadmin admin@your-domain.uz
+```
+
+Replace the email with your administrator email. Enter and confirm a password
+(minimum 10 characters); password input is hidden. This command only creates a
+new account and refuses to overwrite an existing user. Sign in through the normal
+login screen to access center management. Public registration cannot grant this
+role. Center deletion removes it from selection and prevents new handovers;
+existing handovers and ECG access for their manager remain available. The SQLite
+schema is migrated automatically at backend startup.

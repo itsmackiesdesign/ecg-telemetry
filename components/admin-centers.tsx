@@ -1,0 +1,15 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {Hospital,Trash2,RefreshCw} from 'lucide-react';
+import {Button} from '@/components/ui/button';
+import {Dialog,DialogContent,DialogTitle,DialogDescription} from '@/components/ui/dialog';
+import {apiFetch} from '@/lib/api-client';
+type Center={id:string;name:string;city:string;address:string;manager_email:string};
+export function AdminCenters({lang}:{lang:string}){
+ const [rows,setRows]=useState<Center[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[selected,setSelected]=useState<Center|null>(null);
+ const tr=(ru:string,en:string,uz:string)=>lang==='ru'?ru:lang==='uz'?uz:en;
+ async function load(){setLoading(true);setError('');try{const r=await apiFetch('/admin/centers');if(!r.ok)throw Error();const b=await r.json() as {centers:Center[]};setRows(b.centers)}catch{setError(tr('Не удалось загрузить центры','Could not load centers','Марказлар юкланмади'))}finally{setLoading(false)}}
+ useEffect(()=>{void load()},[]);
+ async function remove(){if(!selected||busy)return;setBusy(true);setError('');try{const r=await apiFetch(`/admin/centers/${selected.id}`,{method:'DELETE'});if(!r.ok)throw Error();setRows(rows=>rows.filter(c=>c.id!==selected.id));setSelected(null)}catch{setError(tr('Не удалось удалить центр. Повторите попытку.','Could not delete center. Retry.','Марказни ўчириб бўлмади. Қайта урининг.'))}finally{setBusy(false)}}
+ return <section className="content-card"><div className="history-heading"><h2>{tr('Управление ЧКВ-центрами','Manage PCI centers','PCI марказларни бошқариш')}</h2><Button variant="outline" disabled={loading||busy} onClick={load}><RefreshCw size={16}/>{tr('Обновить','Refresh','Янгилаш')}</Button></div>{error&&<p role="alert">{error}</p>}{loading?<p>{tr('Загрузка…','Loading…','Юкланмоқда…')}</p>:<div className="history-grid">{rows.map(c=><article className="history-card" key={c.id}><div className="history-patient"><Hospital size={22}/><h3>{c.name}</h3></div><p>{c.city}, {c.address}</p><p>{c.manager_email}</p><Button variant="destructive" onClick={()=>{setError('');setSelected(c)}}><Trash2 size={16}/>{tr('Удалить центр','Delete center','Марказни ўчириш')}</Button></article>)}{!rows.length&&<p>{tr('Центров нет','No centers','Марказлар йўқ')}</p>}</div>}<Dialog open={!!selected} onOpenChange={open=>{if(!open&&!busy)setSelected(null)}}><DialogContent><DialogTitle>{tr('Удалить центр?','Delete center?','Марказ ўчирилсинми?')}</DialogTitle><DialogDescription>{selected?.name}. {tr('Центр исчезнет из маршрутизации. Ранее отправленные передачи и ЭКГ сохранятся.','The center will be removed from routing. Existing handovers and ECGs will be retained.','Марказ маршрутизациядан олиб ташланади. Олдинги топширувлар ва ЭКГ сақланади.')}</DialogDescription>{error&&<p role="alert">{error}</p>}<div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={()=>setSelected(null)}>{tr('Отмена','Cancel','Бекор қилиш')}</Button><Button variant="destructive" disabled={busy} onClick={remove}>{busy?'…':tr('Удалить','Delete','Ўчириш')}</Button></div></DialogContent></Dialog></section>
+}
